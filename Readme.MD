@@ -18,11 +18,11 @@
 **Clockbuster** is a simple, minimalist time tracking tool for Windows users. It is designed for those who want a straightforward way to log their hours without the complexity of modern productivity suites. The focus is on a low-friction "Clock In / Clock Out" experience.
 
 ### **Features**
-- ⏱️ **Minimalist Workflow:** Simple start/stop functionality for any activity.
-- 📂 **SQLite Database:** Reliable local data storage.
-- 💾 **DB Backup:** Simple utility to keep your database safe.
-- 📊 **Local Timesheet:** View your logged hours directly within the app.
-- 📥 **Export to CSV:** Easily move your data into other tools via standard spreadsheet format.
+-  **Minimalist Workflow:** Simple start/stop functionality for any activity.
+-  **SQLite Database:** Reliable local data storage.
+-  **DB Backup:** Simple utility to keep your database safe.
+-  **Local Timesheet:** View your logged hours directly within the app.
+-  **Export to CSV:** Easily move your data into other tools via standard spreadsheet format.
 
 ### **Data & Privacy**
 - **Local-First:** All data is stored on your machine in a SQLite database.
