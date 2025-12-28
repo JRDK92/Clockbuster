@@ -2,6 +2,7 @@ using System;
 using System.Data;
 using System.Data.SQLite;
 using System.IO;
+using System.Text;
 using System.Windows.Forms;
 
 namespace Clockbuster
@@ -10,8 +11,9 @@ namespace Clockbuster
     {
         private DateTime startTime;
         private System.Windows.Forms.Timer displayTimer;
+        private System.Windows.Forms.Timer statusTimer;
         private bool isTracking = false;
-        private string dbPath = "clockbuster.db"; // Changed from timely.db
+        private string dbPath = "clockbuster.db";
 
         public MainForm()
         {
@@ -20,7 +22,19 @@ namespace Clockbuster
             displayTimer = new System.Windows.Forms.Timer();
             displayTimer.Interval = 1000;
             displayTimer.Tick += DisplayTimer_Tick;
+
+            statusTimer = new System.Windows.Forms.Timer();
+            statusTimer.Interval = 3000; // 3 seconds
+            statusTimer.Tick += StatusTimer_Tick;
+
             this.FormClosing += Form1_FormClosing;
+        }
+
+        private void StatusTimer_Tick(object sender, EventArgs e)
+        {
+            Label lblStatus = (Label)this.Controls["lblStatus"];
+            lblStatus.Text = "";
+            statusTimer.Stop();
         }
 
         private void Form1_FormClosing(object sender, FormClosingEventArgs e)
@@ -42,7 +56,7 @@ namespace Clockbuster
 
         private void InitializeComponent()
         {
-            this.Text = "Clockbuster - Time Tracker"; // Changed from Timely
+            this.Text = "Clockbuster - Time Tracker";
             this.Width = 400;
             this.Height = 310;
             this.StartPosition = FormStartPosition.CenterScreen;
@@ -53,20 +67,25 @@ namespace Clockbuster
             // Top Level: "File"
             ToolStripMenuItem fileMenu = new ToolStripMenuItem("File");
 
-            // Sub-Level: "Database"
-            ToolStripMenuItem dbMenu = new ToolStripMenuItem("Database");
+            // Sub-Level: "Data" (changed from "Database")
+            ToolStripMenuItem dataMenu = new ToolStripMenuItem("Data");
 
-            // Items under Database
+            // Items under Data
             ToolStripMenuItem backupItem = new ToolStripMenuItem("Backup Database");
             backupItem.Click += BtnBackup_Click;
 
             ToolStripMenuItem locateItem = new ToolStripMenuItem("Locate in Explorer");
             locateItem.Click += LocateDb_Click;
 
-            // Build the hierarchy: File -> Database -> [Backup, Locate]
-            dbMenu.DropDownItems.Add(backupItem);
-            dbMenu.DropDownItems.Add(locateItem);
-            fileMenu.DropDownItems.Add(dbMenu);
+            ToolStripMenuItem exportCsvItem = new ToolStripMenuItem("Export to CSV");
+            exportCsvItem.Click += ExportToCsv_Click;
+
+            // Build the hierarchy: File -> Data -> [Backup, Locate, Export to CSV]
+            dataMenu.DropDownItems.Add(backupItem);
+            dataMenu.DropDownItems.Add(locateItem);
+            dataMenu.DropDownItems.Add(new ToolStripSeparator());
+            dataMenu.DropDownItems.Add(exportCsvItem);
+            fileMenu.DropDownItems.Add(dataMenu);
             menuStrip.Items.Add(fileMenu);
 
             // Top Level: "View"
@@ -184,21 +203,17 @@ namespace Clockbuster
             }
         }
 
-        // New method to ensure database exists and is valid
         private bool EnsureDatabaseExists()
         {
             try
             {
-                // Check if file exists
                 if (!File.Exists(dbPath))
                 {
-                    MessageBox.Show("Database file was deleted or moved. Creating a new database...",
-                        "Database Missing", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    ShowStatus("Database file was deleted or moved. Creating a new database...", System.Drawing.Color.Orange);
                     InitializeDatabase();
                     return true;
                 }
 
-                // Check if table exists
                 using (var conn = new SQLiteConnection($"Data Source={dbPath};Version=3;"))
                 {
                     conn.Open();
@@ -208,10 +223,8 @@ namespace Clockbuster
                         var result = cmd.ExecuteScalar();
                         if (result == null)
                         {
-                            MessageBox.Show("Database table is missing. Recreating database structure...",
-                                "Database Corrupted", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                            ShowStatus("Database table is missing. Recreating database structure...", System.Drawing.Color.Orange);
 
-                            // Recreate the table
                             string createTable = @"CREATE TABLE IF NOT EXISTS sessions (
                                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                                 activity_name TEXT NOT NULL,
@@ -230,10 +243,124 @@ namespace Clockbuster
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Database error: {ex.Message}\n\nPlease restart the application.",
-                    "Critical Database Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                ShowStatus($"Database error: {ex.Message}", System.Drawing.Color.Red);
                 return false;
             }
+        }
+
+        private void ShowStatus(string message, System.Drawing.Color color)
+        {
+            Label lblStatus = (Label)this.Controls["lblStatus"];
+            lblStatus.Text = message;
+            lblStatus.ForeColor = color;
+
+            // Restart the timer to clear status after 3 seconds
+            statusTimer.Stop();
+            statusTimer.Start();
+        }
+
+        private void ExportToCsv_Click(object sender, EventArgs e)
+        {
+            // Step 1: Select database file to export
+            using (OpenFileDialog ofd = new OpenFileDialog())
+            {
+                ofd.Filter = "Database files (*.db)|*.db|All files (*.*)|*.*";
+                ofd.Title = "Select Database to Export";
+                ofd.InitialDirectory = Path.GetDirectoryName(Path.GetFullPath(dbPath));
+
+                if (ofd.ShowDialog() != DialogResult.OK)
+                    return;
+
+                string selectedDb = ofd.FileName;
+
+                // Step 2: Select CSV save location
+                using (SaveFileDialog sfd = new SaveFileDialog())
+                {
+                    string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+                    sfd.FileName = $"clockbuster_export_{timestamp}.csv";
+                    sfd.Filter = "CSV files (*.csv)|*.csv|All files (*.*)|*.*";
+                    sfd.Title = "Save CSV Export";
+
+                    if (sfd.ShowDialog() != DialogResult.OK)
+                        return;
+
+                    string csvPath = sfd.FileName;
+
+                    // Step 3: Perform export
+                    try
+                    {
+                        ShowStatus("Exporting data to CSV...", System.Drawing.Color.Blue);
+                        Application.DoEvents(); // Force UI update
+
+                        int recordCount = ExportDatabaseToCsv(selectedDb, csvPath);
+
+                        ShowStatus($"Completed! Exported {recordCount} records.", System.Drawing.Color.Green);
+                    }
+                    catch (Exception ex)
+                    {
+                        ShowStatus($"Export failed: {ex.Message}", System.Drawing.Color.Red);
+                    }
+                }
+            }
+        }
+
+        private int ExportDatabaseToCsv(string dbFilePath, string csvFilePath)
+        {
+            int recordCount = 0;
+
+            using (var conn = new SQLiteConnection($"Data Source={dbFilePath};Version=3;"))
+            {
+                conn.Open();
+
+                // Check if sessions table exists
+                string checkTable = "SELECT name FROM sqlite_master WHERE type='table' AND name='sessions'";
+                using (var cmd = new SQLiteCommand(checkTable, conn))
+                {
+                    var result = cmd.ExecuteScalar();
+                    if (result == null)
+                    {
+                        throw new Exception("Database does not contain a 'sessions' table.");
+                    }
+                }
+
+                // Export data
+                string query = "SELECT id, activity_name, start_time, end_time, duration_minutes FROM sessions ORDER BY start_time";
+                using (var cmd = new SQLiteCommand(query, conn))
+                using (var reader = cmd.ExecuteReader())
+                {
+                    using (StreamWriter writer = new StreamWriter(csvFilePath, false, Encoding.UTF8))
+                    {
+                        // Write header
+                        writer.WriteLine("ID,Activity,Start Time,End Time,Duration (minutes)");
+
+                        // Write data rows
+                        while (reader.Read())
+                        {
+                            recordCount++;
+
+                            string id = reader["id"].ToString();
+                            string activity = EscapeCsvField(reader["activity_name"].ToString());
+                            string startTime = reader["start_time"].ToString();
+                            string endTime = reader["end_time"].ToString();
+                            string duration = reader["duration_minutes"].ToString();
+
+                            writer.WriteLine($"{id},{activity},{startTime},{endTime},{duration}");
+                        }
+                    }
+                }
+            }
+
+            return recordCount;
+        }
+
+        private string EscapeCsvField(string field)
+        {
+            // If field contains comma, quote, or newline, wrap in quotes and escape internal quotes
+            if (field.Contains(",") || field.Contains("\"") || field.Contains("\n") || field.Contains("\r"))
+            {
+                return "\"" + field.Replace("\"", "\"\"") + "\"";
+            }
+            return field;
         }
 
         private void LocateDb_Click(object sender, EventArgs e)
@@ -244,7 +371,7 @@ namespace Clockbuster
 
                 if (!File.Exists(fullPath))
                 {
-                    MessageBox.Show("Database file not found yet (it will be created on first launch).", "Info");
+                    ShowStatus("Database file not found yet (it will be created on first launch).", System.Drawing.Color.Orange);
                     return;
                 }
 
@@ -252,7 +379,7 @@ namespace Clockbuster
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Unable to open explorer: {ex.Message}", "Error");
+                ShowStatus($"Unable to open explorer: {ex.Message}", System.Drawing.Color.Red);
             }
         }
 
@@ -270,7 +397,7 @@ namespace Clockbuster
             TextBox txtActivity = (TextBox)this.Controls["txtActivity"];
             if (string.IsNullOrWhiteSpace(txtActivity.Text))
             {
-                MessageBox.Show("Please enter an activity name.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                ShowStatus("Please enter an activity name.", System.Drawing.Color.Red);
                 return;
             }
 
@@ -283,6 +410,8 @@ namespace Clockbuster
             btnClockIn.Enabled = false;
             btnClockOut.Enabled = true;
             txtActivity.Enabled = false;
+
+            ShowStatus("Tracking started...", System.Drawing.Color.Green);
         }
 
         private void BtnClockOut_Click(object sender, EventArgs e)
@@ -293,11 +422,9 @@ namespace Clockbuster
 
             TextBox txtActivity = (TextBox)this.Controls["txtActivity"];
 
-            // Ensure database exists before saving
             if (!EnsureDatabaseExists())
             {
-                MessageBox.Show("Cannot save session due to database error.", "Error",
-                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+                ShowStatus("Cannot save session due to database error.", System.Drawing.Color.Red);
                 return;
             }
 
@@ -309,15 +436,14 @@ namespace Clockbuster
             Button btnClockIn = (Button)this.Controls["btnClockIn"];
             Button btnClockOut = (Button)this.Controls["btnClockOut"];
             Label lblElapsed = (Label)this.Controls["lblElapsed"];
-            Label lblStatus = (Label)this.Controls["lblStatus"];
 
             btnClockIn.Enabled = true;
             btnClockOut.Enabled = false;
             txtActivity.Enabled = true;
             txtActivity.Text = "";
             lblElapsed.Text = "00:00";
-            lblStatus.Text = $"Session saved! Duration: {(int)duration.TotalMinutes}m {duration.Seconds}s";
-            lblStatus.ForeColor = System.Drawing.Color.Green;
+
+            ShowStatus($"Session saved! Duration: {(int)duration.TotalMinutes}m {duration.Seconds}s", System.Drawing.Color.Green);
         }
 
         private void DisplayTimer_Tick(object sender, EventArgs e)
@@ -351,8 +477,7 @@ namespace Clockbuster
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Failed to save session: {ex.Message}", "Save Error",
-                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+                ShowStatus($"Failed to save session: {ex.Message}", System.Drawing.Color.Red);
             }
         }
 
@@ -364,7 +489,7 @@ namespace Clockbuster
             using (SaveFileDialog sfd = new SaveFileDialog())
             {
                 string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
-                sfd.FileName = $"clockbuster_backup_{timestamp}.db"; // Changed from timely
+                sfd.FileName = $"clockbuster_backup_{timestamp}.db";
                 sfd.Filter = "Database files (*.db)|*.db|All files (*.*)|*.*";
 
                 if (sfd.ShowDialog() == DialogResult.OK)
@@ -372,11 +497,11 @@ namespace Clockbuster
                     try
                     {
                         File.Copy(dbPath, sfd.FileName, true);
-                        MessageBox.Show("Backup created successfully!", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        ShowStatus("Backup created successfully!", System.Drawing.Color.Green);
                     }
                     catch (Exception ex)
                     {
-                        MessageBox.Show($"Backup failed: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        ShowStatus($"Backup failed: {ex.Message}", System.Drawing.Color.Red);
                     }
                 }
             }
