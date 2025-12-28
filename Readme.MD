@@ -5,9 +5,9 @@
 
 **A minimalist personal time tracking application for Windows.**
 
-[![GitHub Release](https://img.shields.io/github/v/release/yourusername/projectname?style=flat-square&color=blue)](#)
+[![GitHub Release](https://img.shields.io/github/v/release/JRDK92/Clockbuster?style=flat-square&color=blue)](https://github.com/JRDK92/Clockbuster/releases/tag/v1.0.0)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg?style=flat-square)](https://www.gnu.org/licenses/gpl-3.0)
-[![Platform: Windows](https://img.shields.io/badge/Platform-Windows-0078d7?style=flat-square&logo=windows)](#)
+[![Platform: Windows](https://img.shields.io/badge/Platform-Windows-0078d7?style=flat-square&logo=windows)](https://github.com/JRDK92/Clockbuster/releases/tag/v1.0.0)
 
 [Features](#features) • [Data & Privacy](#data--privacy) • [Installation](#quick-start)
 </div>
