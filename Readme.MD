@@ -1,6 +1,5 @@
 <div align="center">
-<img src="docs/imgs/logo.png" width="150" alt="Logo">
-
+  <img src="clockbuster.png" width="450" alt="Clockbuster Logo">
 # Clockbuster
 
 **A minimalist personal time tracking application for Windows.**
