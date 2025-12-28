@@ -11,7 +11,7 @@ namespace Clockbuster
         private DateTime startTime;
         private System.Windows.Forms.Timer displayTimer;
         private bool isTracking = false;
-        private string dbPath = "timely.db";
+        private string dbPath = "clockbuster.db"; // Changed from timely.db
 
         public MainForm()
         {
@@ -40,10 +40,9 @@ namespace Clockbuster
             }
         }
 
-
         private void InitializeComponent()
         {
-            this.Text = "Timely - Time Tracker";
+            this.Text = "Clockbuster - Time Tracker"; // Changed from Timely
             this.Width = 400;
             this.Height = 310;
             this.StartPosition = FormStartPosition.CenterScreen;
@@ -155,25 +154,85 @@ namespace Clockbuster
 
         private void InitializeDatabase()
         {
-            if (!File.Exists(dbPath))
+            try
             {
-                SQLiteConnection.CreateFile(dbPath);
-            }
-
-            using (var conn = new SQLiteConnection($"Data Source={dbPath};Version=3;"))
-            {
-                conn.Open();
-                string createTable = @"CREATE TABLE IF NOT EXISTS sessions (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    activity_name TEXT NOT NULL,
-                    start_time TEXT NOT NULL,
-                    end_time TEXT NOT NULL,
-                    duration_minutes REAL NOT NULL
-                )";
-                using (var cmd = new SQLiteCommand(createTable, conn))
+                if (!File.Exists(dbPath))
                 {
-                    cmd.ExecuteNonQuery();
+                    SQLiteConnection.CreateFile(dbPath);
                 }
+
+                using (var conn = new SQLiteConnection($"Data Source={dbPath};Version=3;"))
+                {
+                    conn.Open();
+                    string createTable = @"CREATE TABLE IF NOT EXISTS sessions (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        activity_name TEXT NOT NULL,
+                        start_time TEXT NOT NULL,
+                        end_time TEXT NOT NULL,
+                        duration_minutes REAL NOT NULL
+                    )";
+                    using (var cmd = new SQLiteCommand(createTable, conn))
+                    {
+                        cmd.ExecuteNonQuery();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Database initialization failed: {ex.Message}", "Database Error",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        // New method to ensure database exists and is valid
+        private bool EnsureDatabaseExists()
+        {
+            try
+            {
+                // Check if file exists
+                if (!File.Exists(dbPath))
+                {
+                    MessageBox.Show("Database file was deleted or moved. Creating a new database...",
+                        "Database Missing", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    InitializeDatabase();
+                    return true;
+                }
+
+                // Check if table exists
+                using (var conn = new SQLiteConnection($"Data Source={dbPath};Version=3;"))
+                {
+                    conn.Open();
+                    string checkTable = "SELECT name FROM sqlite_master WHERE type='table' AND name='sessions'";
+                    using (var cmd = new SQLiteCommand(checkTable, conn))
+                    {
+                        var result = cmd.ExecuteScalar();
+                        if (result == null)
+                        {
+                            MessageBox.Show("Database table is missing. Recreating database structure...",
+                                "Database Corrupted", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+
+                            // Recreate the table
+                            string createTable = @"CREATE TABLE IF NOT EXISTS sessions (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                activity_name TEXT NOT NULL,
+                                start_time TEXT NOT NULL,
+                                end_time TEXT NOT NULL,
+                                duration_minutes REAL NOT NULL
+                            )";
+                            using (var createCmd = new SQLiteCommand(createTable, conn))
+                            {
+                                createCmd.ExecuteNonQuery();
+                            }
+                        }
+                    }
+                }
+                return true;
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Database error: {ex.Message}\n\nPlease restart the application.",
+                    "Critical Database Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return false;
             }
         }
 
@@ -199,6 +258,9 @@ namespace Clockbuster
 
         private void ViewTimeclockData_Click(object sender, EventArgs e)
         {
+            if (!EnsureDatabaseExists())
+                return;
+
             TimeclockViewerForm viewerForm = new TimeclockViewerForm(dbPath);
             viewerForm.ShowDialog();
         }
@@ -230,6 +292,15 @@ namespace Clockbuster
             double durationMinutes = duration.TotalMinutes;
 
             TextBox txtActivity = (TextBox)this.Controls["txtActivity"];
+
+            // Ensure database exists before saving
+            if (!EnsureDatabaseExists())
+            {
+                MessageBox.Show("Cannot save session due to database error.", "Error",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+
             SaveSession(txtActivity.Text, startTime, endTime, durationMinutes);
 
             isTracking = false;
@@ -261,28 +332,39 @@ namespace Clockbuster
 
         private void SaveSession(string activityName, DateTime start, DateTime end, double durationMinutes)
         {
-            using (var conn = new SQLiteConnection($"Data Source={dbPath};Version=3;"))
+            try
             {
-                conn.Open();
-                string insert = @"INSERT INTO sessions (activity_name, start_time, end_time, duration_minutes) 
-                                  VALUES (@activity, @start, @end, @duration)";
-                using (var cmd = new SQLiteCommand(insert, conn))
+                using (var conn = new SQLiteConnection($"Data Source={dbPath};Version=3;"))
                 {
-                    cmd.Parameters.AddWithValue("@activity", activityName);
-                    cmd.Parameters.AddWithValue("@start", start.ToString("yyyy-MM-dd HH:mm:ss"));
-                    cmd.Parameters.AddWithValue("@end", end.ToString("yyyy-MM-dd HH:mm:ss"));
-                    cmd.Parameters.AddWithValue("@duration", durationMinutes);
-                    cmd.ExecuteNonQuery();
+                    conn.Open();
+                    string insert = @"INSERT INTO sessions (activity_name, start_time, end_time, duration_minutes) 
+                                      VALUES (@activity, @start, @end, @duration)";
+                    using (var cmd = new SQLiteCommand(insert, conn))
+                    {
+                        cmd.Parameters.AddWithValue("@activity", activityName);
+                        cmd.Parameters.AddWithValue("@start", start.ToString("yyyy-MM-dd HH:mm:ss"));
+                        cmd.Parameters.AddWithValue("@end", end.ToString("yyyy-MM-dd HH:mm:ss"));
+                        cmd.Parameters.AddWithValue("@duration", durationMinutes);
+                        cmd.ExecuteNonQuery();
+                    }
                 }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Failed to save session: {ex.Message}", "Save Error",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
         private void BtnBackup_Click(object sender, EventArgs e)
         {
+            if (!EnsureDatabaseExists())
+                return;
+
             using (SaveFileDialog sfd = new SaveFileDialog())
             {
                 string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
-                sfd.FileName = $"timely_backup_{timestamp}.db";
+                sfd.FileName = $"clockbuster_backup_{timestamp}.db"; // Changed from timely
                 sfd.Filter = "Database files (*.db)|*.db|All files (*.*)|*.*";
 
                 if (sfd.ShowDialog() == DialogResult.OK)
