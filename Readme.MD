@@ -15,7 +15,7 @@
 ---
 
 ### **The Project in a Nutshell**
-**<INSERTNAMEHERE>** is a simple, minimalist time tracking tool for Windows users. It is designed for those who want a straightforward way to log their hours without the complexity of modern productivity suites. The focus is on a low-friction "Clock In / Clock Out" experience.
+**Clockbuster** is a simple, minimalist time tracking tool for Windows users. It is designed for those who want a straightforward way to log their hours without the complexity of modern productivity suites. The focus is on a low-friction "Clock In / Clock Out" experience.
 
 ### **Features**
 - ⏱️ **Minimalist Workflow:** Simple start/stop functionality for any activity.
@@ -50,5 +50,5 @@ This project is licensed under the **GNU GPL v3**.
 
 ---
 <div align="center">
-Maintained by [<INSERT YOUR NAME>](https://github.com/yourusername)
+Maintained by JRDK92
 </div>
