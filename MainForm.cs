@@ -4,6 +4,8 @@ using System.Data.SQLite;
 using System.IO;
 using System.Text;
 using System.Windows.Forms;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace Clockbuster
 {
@@ -13,18 +15,28 @@ namespace Clockbuster
         private System.Windows.Forms.Timer displayTimer;
         private System.Windows.Forms.Timer statusTimer;
         private bool isTracking = false;
-        private string dbPath = "clockbuster.db";
+        /* Database path - set in constructor to use AppData folder */
+        private string dbPath;
 
         public MainForm()
         {
             InitializeComponent();
+
+            /* Create/use database for the user in their app data folder; should be absolute path */
+            string appFolder = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "Clockbuster"
+            );
+            Directory.CreateDirectory(appFolder);
+            dbPath = Path.Combine(appFolder, "clockbuster.db");
+
             InitializeDatabase();
             displayTimer = new System.Windows.Forms.Timer();
             displayTimer.Interval = 1000;
             displayTimer.Tick += DisplayTimer_Tick;
 
             statusTimer = new System.Windows.Forms.Timer();
-            statusTimer.Interval = 3000; // 3 seconds
+            statusTimer.Interval = 3000;
             statusTimer.Tick += StatusTimer_Tick;
 
             this.FormClosing += Form1_FormClosing;
@@ -56,21 +68,20 @@ namespace Clockbuster
 
         private void InitializeComponent()
         {
+            /* Main window configuration */
             this.Text = "Clockbuster - Time Tracker";
-            this.Width = 400;
+            this.Width = 450;
             this.Height = 310;
+            this.FormBorderStyle = FormBorderStyle.FixedSingle;
+            this.MaximizeBox = false;
             this.StartPosition = FormStartPosition.CenterScreen;
 
-            // 1. Create the MenuStrip
             MenuStrip menuStrip = new MenuStrip();
 
-            // Top Level: "File"
             ToolStripMenuItem fileMenu = new ToolStripMenuItem("File");
 
-            // Sub-Level: "Data" (changed from "Database")
             ToolStripMenuItem dataMenu = new ToolStripMenuItem("Data");
 
-            // Items under Data
             ToolStripMenuItem backupItem = new ToolStripMenuItem("Backup Database");
             backupItem.Click += BtnBackup_Click;
 
@@ -80,15 +91,17 @@ namespace Clockbuster
             ToolStripMenuItem exportCsvItem = new ToolStripMenuItem("Export to CSV");
             exportCsvItem.Click += ExportToCsv_Click;
 
-            // Build the hierarchy: File -> Data -> [Backup, Locate, Export to CSV]
+            ToolStripMenuItem mergeDataItem = new ToolStripMenuItem("Merge Data");
+            mergeDataItem.Click += MergeData_Click;
+
             dataMenu.DropDownItems.Add(backupItem);
             dataMenu.DropDownItems.Add(locateItem);
             dataMenu.DropDownItems.Add(new ToolStripSeparator());
             dataMenu.DropDownItems.Add(exportCsvItem);
+            dataMenu.DropDownItems.Add(mergeDataItem);
             fileMenu.DropDownItems.Add(dataMenu);
             menuStrip.Items.Add(fileMenu);
 
-            // Top Level: "View"
             ToolStripMenuItem viewMenu = new ToolStripMenuItem("View");
 
             ToolStripMenuItem timeclockDataItem = new ToolStripMenuItem("Timeclock Data");
@@ -100,7 +113,6 @@ namespace Clockbuster
             this.MainMenuStrip = menuStrip;
             this.Controls.Add(menuStrip);
 
-            // 2. Adjust controls (shifted down by 30px to accommodate menu)
             Label lblActivity = new Label
             {
                 Text = "Activity:",
@@ -108,13 +120,13 @@ namespace Clockbuster
                 Top = 50,
                 Width = 80
             };
-
+            /* Text input box where user types the activity name they're tracking */
             TextBox txtActivity = new TextBox
             {
                 Name = "txtActivity",
                 Left = 110,
                 Top = 50,
-                Width = 250
+                Width = 300
             };
 
             Button btnClockIn = new Button
@@ -144,20 +156,22 @@ namespace Clockbuster
                 Text = "00:00",
                 Left = 20,
                 Top = 130,
-                Width = 340,
+                Width = 390,
                 Height = 40,
                 Font = new System.Drawing.Font("Arial", 24, System.Drawing.FontStyle.Bold),
                 TextAlign = System.Drawing.ContentAlignment.MiddleCenter
             };
 
+            /* Status message label - shows feedback to user, wraps text to prevent cutoff */
             Label lblStatus = new Label
             {
                 Name = "lblStatus",
                 Text = "",
                 Left = 20,
                 Top = 180,
-                Width = 340,
-                Height = 30,
+                Width = 390,
+                Height = 50,
+                AutoSize = false,
                 Font = new System.Drawing.Font("Arial", 10, System.Drawing.FontStyle.Regular),
                 TextAlign = System.Drawing.ContentAlignment.MiddleCenter,
                 ForeColor = System.Drawing.Color.Green
@@ -254,14 +268,168 @@ namespace Clockbuster
             lblStatus.Text = message;
             lblStatus.ForeColor = color;
 
-            // Restart the timer to clear status after 3 seconds
             statusTimer.Stop();
             statusTimer.Start();
         }
 
+        private void MergeData_Click(object sender, EventArgs e)
+        {
+            if (!EnsureDatabaseExists())
+                return;
+
+            using (OpenFileDialog ofd = new OpenFileDialog())
+            {
+                ofd.Filter = "Database files (*.db)|*.db|All files (*.*)|*.*";
+                ofd.Title = "Select Database Files to Merge";
+                ofd.Multiselect = true;
+                ofd.InitialDirectory = Path.GetDirectoryName(Path.GetFullPath(dbPath));
+
+                if (ofd.ShowDialog() != DialogResult.OK || ofd.FileNames.Length == 0)
+                    return;
+
+                try
+                {
+                    ShowStatus("Merging data...", System.Drawing.Color.Blue);
+                    Application.DoEvents();
+
+                    int totalMerged = 0;
+                    List<string> errors = new List<string>();
+
+                    foreach (string sourceDb in ofd.FileNames)
+                    {
+                        if (Path.GetFullPath(sourceDb) == Path.GetFullPath(dbPath))
+                        {
+                            errors.Add($"Skipped: {Path.GetFileName(sourceDb)} (cannot merge with itself)");
+                            continue;
+                        }
+
+                        try
+                        {
+                            int merged = MergeDatabaseInto(sourceDb, dbPath);
+                            totalMerged += merged;
+                        }
+                        catch (Exception ex)
+                        {
+                            errors.Add($"Error merging {Path.GetFileName(sourceDb)}: {ex.Message}");
+                        }
+                    }
+
+                    if (errors.Count > 0)
+                    {
+                        ShowStatus($"Merged {totalMerged} records with {errors.Count} error(s).", System.Drawing.Color.Orange);
+                        MessageBox.Show(string.Join("\n", errors), "Merge Warnings", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    }
+                    else
+                    {
+                        ShowStatus($"Successfully merged {totalMerged} records!", System.Drawing.Color.Green);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    ShowStatus($"Merge failed: {ex.Message}", System.Drawing.Color.Red);
+                }
+            }
+        }
+
+        private int MergeDatabaseInto(string sourceDbPath, string targetDbPath)
+        {
+            int mergedCount = 0;
+            List<SessionRecord> records = new List<SessionRecord>();
+
+            using (var sourceConn = new SQLiteConnection($"Data Source={sourceDbPath};Version=3;"))
+            {
+                sourceConn.Open();
+
+                string checkTable = "SELECT name FROM sqlite_master WHERE type='table' AND name='sessions'";
+                using (var cmd = new SQLiteCommand(checkTable, sourceConn))
+                {
+                    var result = cmd.ExecuteScalar();
+                    if (result == null)
+                    {
+                        throw new Exception("Source database does not contain a 'sessions' table.");
+                    }
+                }
+
+                string query = "SELECT activity_name, start_time, end_time, duration_minutes FROM sessions";
+                using (var cmd = new SQLiteCommand(query, sourceConn))
+                using (var reader = cmd.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        records.Add(new SessionRecord
+                        {
+                            ActivityName = reader["activity_name"].ToString(),
+                            StartTime = reader["start_time"].ToString(),
+                            EndTime = reader["end_time"].ToString(),
+                            DurationMinutes = Convert.ToDouble(reader["duration_minutes"])
+                        });
+                    }
+                }
+            }
+
+            using (var targetConn = new SQLiteConnection($"Data Source={targetDbPath};Version=3;"))
+            {
+                targetConn.Open();
+
+                using (var transaction = targetConn.BeginTransaction())
+                {
+                    try
+                    {
+                        foreach (var record in records)
+                        {
+                            string checkExisting = @"SELECT COUNT(*) FROM sessions 
+                                                     WHERE activity_name = @activity 
+                                                     AND start_time = @start 
+                                                     AND end_time = @end";
+
+                            using (var checkCmd = new SQLiteCommand(checkExisting, targetConn))
+                            {
+                                checkCmd.Parameters.AddWithValue("@activity", record.ActivityName);
+                                checkCmd.Parameters.AddWithValue("@start", record.StartTime);
+                                checkCmd.Parameters.AddWithValue("@end", record.EndTime);
+
+                                long count = (long)checkCmd.ExecuteScalar();
+                                if (count > 0)
+                                    continue;
+                            }
+
+                            string insert = @"INSERT INTO sessions (activity_name, start_time, end_time, duration_minutes) 
+                                            VALUES (@activity, @start, @end, @duration)";
+
+                            using (var insertCmd = new SQLiteCommand(insert, targetConn))
+                            {
+                                insertCmd.Parameters.AddWithValue("@activity", record.ActivityName);
+                                insertCmd.Parameters.AddWithValue("@start", record.StartTime);
+                                insertCmd.Parameters.AddWithValue("@end", record.EndTime);
+                                insertCmd.Parameters.AddWithValue("@duration", record.DurationMinutes);
+                                insertCmd.ExecuteNonQuery();
+                                mergedCount++;
+                            }
+                        }
+
+                        transaction.Commit();
+                    }
+                    catch
+                    {
+                        transaction.Rollback();
+                        throw;
+                    }
+                }
+            }
+
+            return mergedCount;
+        }
+
+        private class SessionRecord
+        {
+            public string ActivityName { get; set; }
+            public string StartTime { get; set; }
+            public string EndTime { get; set; }
+            public double DurationMinutes { get; set; }
+        }
+
         private void ExportToCsv_Click(object sender, EventArgs e)
         {
-            // Step 1: Select database file to export
             using (OpenFileDialog ofd = new OpenFileDialog())
             {
                 ofd.Filter = "Database files (*.db)|*.db|All files (*.*)|*.*";
@@ -273,7 +441,6 @@ namespace Clockbuster
 
                 string selectedDb = ofd.FileName;
 
-                // Step 2: Select CSV save location
                 using (SaveFileDialog sfd = new SaveFileDialog())
                 {
                     string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
@@ -286,11 +453,10 @@ namespace Clockbuster
 
                     string csvPath = sfd.FileName;
 
-                    // Step 3: Perform export
                     try
                     {
                         ShowStatus("Exporting data to CSV...", System.Drawing.Color.Blue);
-                        Application.DoEvents(); // Force UI update
+                        Application.DoEvents();
 
                         int recordCount = ExportDatabaseToCsv(selectedDb, csvPath);
 
@@ -312,7 +478,6 @@ namespace Clockbuster
             {
                 conn.Open();
 
-                // Check if sessions table exists
                 string checkTable = "SELECT name FROM sqlite_master WHERE type='table' AND name='sessions'";
                 using (var cmd = new SQLiteCommand(checkTable, conn))
                 {
@@ -323,17 +488,14 @@ namespace Clockbuster
                     }
                 }
 
-                // Export data
                 string query = "SELECT id, activity_name, start_time, end_time, duration_minutes FROM sessions ORDER BY start_time";
                 using (var cmd = new SQLiteCommand(query, conn))
                 using (var reader = cmd.ExecuteReader())
                 {
                     using (StreamWriter writer = new StreamWriter(csvFilePath, false, Encoding.UTF8))
                     {
-                        // Write header
                         writer.WriteLine("ID,Activity,Start Time,End Time,Duration (minutes)");
 
-                        // Write data rows
                         while (reader.Read())
                         {
                             recordCount++;
@@ -355,7 +517,6 @@ namespace Clockbuster
 
         private string EscapeCsvField(string field)
         {
-            // If field contains comma, quote, or newline, wrap in quotes and escape internal quotes
             if (field.Contains(",") || field.Contains("\"") || field.Contains("\n") || field.Contains("\r"))
             {
                 return "\"" + field.Replace("\"", "\"\"") + "\"";
@@ -395,11 +556,15 @@ namespace Clockbuster
         private void BtnClockIn_Click(object sender, EventArgs e)
         {
             TextBox txtActivity = (TextBox)this.Controls["txtActivity"];
-            if (string.IsNullOrWhiteSpace(txtActivity.Text))
+            string activityText = txtActivity.Text.Trim().ToUpper();
+
+            if (string.IsNullOrWhiteSpace(activityText))
             {
                 ShowStatus("Please enter an activity name.", System.Drawing.Color.Red);
                 return;
             }
+
+            txtActivity.Text = activityText;
 
             startTime = DateTime.Now;
             isTracking = true;
