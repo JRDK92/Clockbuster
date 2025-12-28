@@ -55,11 +55,6 @@ This project is licensed under the **GNU GPL v3**.
 * **License:** GNU GPL v3
 
 
-### **TL;DR**
-* **What:** A minimalist "Clock In/Out" time tracker for Windows.
-* **Privacy:** 100% local SQLite storage; no cloud, no tracking, no accounts.
-* **Key Tools:** In-app timesheets, CSV exports, and database backups.
-* **Legal:** Licensed under GPL v3. Free to use/modify, but commercial rebranding and resale are strictly prohibited.
 
 ---
 <div align="center">
