@@ -1,4 +1,4 @@
-﻿namespace Timely
+﻿namespace Clockbuster
 {
     partial class TimeclockViewerForm
     {
