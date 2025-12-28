@@ -12,6 +12,12 @@
 [Features](#features) • [Data & Privacy](#data--privacy) • [Installation](#quick-start)
 </div>
 
+### **TL;DR**
+* **What:** A minimalist "Clock In/Out" time tracker for Windows.
+* **Privacy:** 100% local SQLite storage; no cloud, no tracking, no accounts.
+* **Key Tools:** In-app timesheets, CSV exports, and database backups.
+* **Legal:** Licensed under GPL v3. Free to use/modify, but commercial rebranding and resale are strictly prohibited.
+
 ---
 
 ### **The Project in a Nutshell**
@@ -34,7 +40,7 @@
 This project is licensed under the **GNU GPL v3**. 
 
 > [!IMPORTANT]
-> This is **Open Source software** intended for public use and personal productivity. You are free to use, study, and modify it. However, you are **strictly prohibited** from taking this code, rebranding it, and selling it as a commercial product. This project must remain free and open for everyone.
+> This is **Open Source software** intended for public use and personal productivity. You are free to use, study, and modify it. However, you are **strictly prohibited** from taking this code, rebranding it, and selling it as a commercial product. This project must remain free and open for everyone. You are permitted to fork and use any resources here as needed, but if you publish it, it MUST be GPL, for public use. Let's build a world with lots of wonderful, freely accessible tools together, friends!
 
 ---
 
@@ -47,6 +53,13 @@ This project is licensed under the **GNU GPL v3**.
 * **Environment:** Windows
 * **Storage Engine:** SQLite
 * **License:** GNU GPL v3
+
+
+### **TL;DR**
+* **What:** A minimalist "Clock In/Out" time tracker for Windows.
+* **Privacy:** 100% local SQLite storage; no cloud, no tracking, no accounts.
+* **Key Tools:** In-app timesheets, CSV exports, and database backups.
+* **Legal:** Licensed under GPL v3. Free to use/modify, but commercial rebranding and resale are strictly prohibited.
 
 ---
 <div align="center">
