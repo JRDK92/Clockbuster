@@ -22,15 +22,9 @@ namespace Clockbuster
         {
             InitializeComponent();
 
-            /* Create/use database for the user in their app data folder; should be absolute path */
-            string appFolder = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "Clockbuster"
-            );
-            Directory.CreateDirectory(appFolder);
-            dbPath = Path.Combine(appFolder, "clockbuster.db");
+            /* Don't initialize database or device name yet - wait for first clock in */
+            dbPath = null;
 
-            InitializeDatabase();
             displayTimer = new System.Windows.Forms.Timer();
             displayTimer.Interval = 1000;
             displayTimer.Tick += DisplayTimer_Tick;
@@ -42,6 +36,138 @@ namespace Clockbuster
             this.FormClosing += Form1_FormClosing;
         }
 
+        /* Get or prompt for a unique device identifier */
+        private string GetSafeDeviceName()
+        {
+            /* Check if user has already named this device */
+            if (!string.IsNullOrEmpty(Properties.Settings.Default.DeviceId))
+            {
+                return Properties.Settings.Default.DeviceId;
+            }
+
+            /* First run - suggest a default name */
+            string suggested = $"{Environment.UserName}-{Environment.MachineName}".ToLower();
+            string machineLower = Environment.MachineName.ToLower();
+            if (machineLower == "laptop" || machineLower == "desktop" || machineLower == "pc")
+            {
+                suggested = $"{Environment.UserName}-{machineLower}";
+            }
+
+            /* Clean the suggestion */
+            char[] invalidChars = Path.GetInvalidFileNameChars();
+            foreach (char c in invalidChars)
+            {
+                suggested = suggested.Replace(c.ToString(), "");
+            }
+
+            if (suggested.Length > 30)
+                suggested = suggested.Substring(0, 30);
+
+            /* Prompt user to name their device */
+            string deviceName = PromptForDeviceName(suggested);
+
+            /* Save it for future runs */
+            Properties.Settings.Default.DeviceId = deviceName;
+            Properties.Settings.Default.Save();
+
+            return deviceName;
+        }
+        /* Show dialog asking user to name their device */
+        private string PromptForDeviceName(string defaultName)
+        {
+            Form prompt = new Form()
+            {
+                Width = 450,
+                Height = 200,
+                FormBorderStyle = FormBorderStyle.FixedDialog,
+                Text = "Name This Device",
+                StartPosition = FormStartPosition.CenterScreen,
+                MaximizeBox = false,
+                MinimizeBox = false
+            };
+
+            Label introLabel = new Label()
+            {
+                Left = 20,
+                Top = 20,
+                Width = 400,
+                Height = 40,
+                Text = "This app creates separate database files for each device.\nPlease give this device a unique name:"
+            };
+
+            Label nameLabel = new Label()
+            {
+                Left = 20,
+                Top = 70,
+                Width = 100,
+                Text = "Device name:"
+            };
+
+            TextBox textBox = new TextBox()
+            {
+                Left = 20,
+                Top = 95,
+                Width = 400,
+                Text = defaultName
+            };
+
+            Label exampleLabel = new Label()
+            {
+                Left = 20,
+                Top = 120,
+                Width = 400,
+                Height = 20,
+                Text = "Examples: work-laptop, home-pc, johns-desktop",
+                ForeColor = System.Drawing.Color.Gray,
+                Font = new System.Drawing.Font("Arial", 8, System.Drawing.FontStyle.Italic)
+            };
+
+            Button confirmation = new Button()
+            {
+                Text = "OK",
+                Left = 330,
+                Width = 90,
+                Top = 145,
+                DialogResult = DialogResult.OK
+            };
+
+            confirmation.Click += (sender, e) => { prompt.Close(); };
+
+            prompt.Controls.Add(introLabel);
+            prompt.Controls.Add(nameLabel);
+            prompt.Controls.Add(textBox);
+            prompt.Controls.Add(exampleLabel);
+            prompt.Controls.Add(confirmation);
+            prompt.AcceptButton = confirmation;
+
+            /* Select all text so user can easily replace it */
+            textBox.SelectAll();
+            textBox.Focus();
+
+            if (prompt.ShowDialog() == DialogResult.OK)
+            {
+                string name = textBox.Text.Trim().ToLower();
+
+                /* Clean the input */
+                char[] invalidChars = Path.GetInvalidFileNameChars();
+                foreach (char c in invalidChars)
+                {
+                    name = name.Replace(c.ToString(), "");
+                }
+
+                /* If user cleared it or entered invalid characters only, use default */
+                if (string.IsNullOrWhiteSpace(name))
+                    name = defaultName;
+
+                if (name.Length > 30)
+                    name = name.Substring(0, 30);
+
+                return name;
+            }
+
+            /* User closed dialog - use default */
+            return defaultName;
+        }
         private void StatusTimer_Tick(object sender, EventArgs e)
         {
             Label lblStatus = (Label)this.Controls["lblStatus"];
@@ -66,6 +192,78 @@ namespace Clockbuster
             }
         }
 
+        /* Allow user to change their device name */
+        private void RenameDevice_Click(object sender, EventArgs e)
+        {
+            if (isTracking)
+            {
+                MessageBox.Show("Please clock out before renaming device.",
+                    "Active Session", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            string currentName = Properties.Settings.Default.DeviceId;
+            if (string.IsNullOrEmpty(currentName))
+                currentName = GetSafeDeviceName();
+
+            string newName = PromptForDeviceName(currentName);
+
+            /* If name didn't change, do nothing */
+            if (newName == currentName)
+            {
+                ShowStatus("Device name unchanged.", System.Drawing.Color.Orange);
+                return;
+            }
+
+            /* Save new device name */
+            Properties.Settings.Default.DeviceId = newName;
+            Properties.Settings.Default.Save();
+
+            /* Ask if user wants to rename the database file too */
+            DialogResult rename = MessageBox.Show(
+                $"Device renamed to: {newName}\n\n" +
+                $"Would you like to rename your database file to match?\n\n" +
+                $"Current: {Path.GetFileName(dbPath)}\n" +
+                $"New: clockbuster_{newName}.db",
+                "Rename Database File?",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question);
+
+            if (rename == DialogResult.Yes)
+            {
+                try
+                {
+                    string currentDir = Path.GetDirectoryName(dbPath);
+                    string newPath = Path.Combine(currentDir, $"clockbuster_{newName}.db");
+
+                    /* Check if target file already exists */
+                    if (File.Exists(newPath))
+                    {
+                        ShowStatus("A database with that name already exists!", System.Drawing.Color.Red);
+                        return;
+                    }
+
+                    /* Rename the file */
+                    File.Move(dbPath, newPath);
+
+                    /* Update our path reference */
+                    dbPath = newPath;
+                    Properties.Settings.Default.DatabasePath = dbPath;
+                    Properties.Settings.Default.Save();
+
+                    ShowStatus($"Device and database renamed to: {newName}", System.Drawing.Color.Green);
+                }
+                catch (Exception ex)
+                {
+                    ShowStatus($"File rename failed: {ex.Message}", System.Drawing.Color.Red);
+                }
+            }
+            else
+            {
+                ShowStatus($"Device name updated to: {newName}", System.Drawing.Color.Green);
+            }
+        }
+
         private void InitializeComponent()
         {
             /* Main window configuration */
@@ -75,6 +273,8 @@ namespace Clockbuster
             this.FormBorderStyle = FormBorderStyle.FixedSingle;
             this.MaximizeBox = false;
             this.StartPosition = FormStartPosition.CenterScreen;
+
+
 
             MenuStrip menuStrip = new MenuStrip();
 
@@ -183,8 +383,155 @@ namespace Clockbuster
             this.Controls.Add(btnClockOut);
             this.Controls.Add(lblElapsed);
             this.Controls.Add(lblStatus);
+
+
+            ToolStripMenuItem changeLocationItem = new ToolStripMenuItem("Change Database Location");
+            changeLocationItem.Click += ChangeDbLocation_Click;
+            dataMenu.DropDownItems.Add(changeLocationItem);
+
+            ToolStripMenuItem renameDeviceItem = new ToolStripMenuItem("Rename This Device");
+            renameDeviceItem.Click += RenameDevice_Click;
+            dataMenu.DropDownItems.Add(renameDeviceItem);
         }
 
+        private void ChangeDbLocation_Click(object sender, EventArgs e)
+        {
+            if (isTracking)
+            {
+                MessageBox.Show("Please clock out before changing database location.",
+                    "Active Session", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            using (SaveFileDialog sfd = new SaveFileDialog())
+            {
+                sfd.Title = "Choose Database Location for This Device";
+                sfd.Filter = "Database files (*.db)|*.db";
+
+                /* Suggest device-specific filename */
+                string deviceName = GetSafeDeviceName();
+                sfd.FileName = $"clockbuster_{deviceName}.db";
+                sfd.CheckFileExists = false;
+
+                /* Try to find Google Drive folder */
+                string gDriveRoot = FindGoogleDriveFolder();
+                if (gDriveRoot != null)
+                {
+                    string gDriveDocs = Path.Combine(gDriveRoot, "Documents");
+                    if (Directory.Exists(gDriveDocs))
+                        sfd.InitialDirectory = gDriveDocs;
+                }
+                else
+                {
+                    sfd.InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+                }
+
+                if (sfd.ShowDialog() == DialogResult.OK)
+                {
+                    string newDbPath = sfd.FileName;
+
+                    /* Check if we're trying to use the same database we're already using */
+                    if (Path.GetFullPath(newDbPath) == Path.GetFullPath(dbPath))
+                    {
+                        ShowStatus("Already using this database location.", System.Drawing.Color.Orange);
+                        return;
+                    }
+
+                    bool targetExists = File.Exists(newDbPath);
+                    bool currentExists = File.Exists(dbPath);
+
+                    /* If target exists, ask what to do */
+                    if (targetExists)
+                    {
+                        DialogResult result = MessageBox.Show(
+                            $"The file '{Path.GetFileName(newDbPath)}' already exists.\n\n" +
+                            "This might be from a previous session on this PC.\n\n" +
+                            "What would you like to do?\n\n" +
+                            "• YES = Keep existing file and add any new data from current session\n" +
+                            "• NO = Replace with current session data\n" +
+                            "• CANCEL = Choose a different location",
+                            "File Exists",
+                            MessageBoxButtons.YesNoCancel,
+                            MessageBoxIcon.Question);
+
+                        if (result == DialogResult.Cancel)
+                            return;
+
+                        if (result == DialogResult.Yes && currentExists)
+                        {
+                            /* Merge current into target */
+                            try
+                            {
+                                ShowStatus("Merging data...", System.Drawing.Color.Blue);
+                                Application.DoEvents();
+                                int merged = MergeDatabaseInto(dbPath, newDbPath);
+                                ShowStatus($"Merged {merged} records!", System.Drawing.Color.Green);
+                            }
+                            catch (Exception ex)
+                            {
+                                ShowStatus($"Merge failed: {ex.Message}", System.Drawing.Color.Red);
+                                return;
+                            }
+                        }
+                        else if (result == DialogResult.No && currentExists)
+                        {
+                            /* Overwrite with current */
+                            try
+                            {
+                                File.Copy(dbPath, newDbPath, true);
+                                ShowStatus("Database copied to new location!", System.Drawing.Color.Green);
+                            }
+                            catch (Exception ex)
+                            {
+                                ShowStatus($"Failed to copy: {ex.Message}", System.Drawing.Color.Red);
+                                return;
+                            }
+                        }
+                    }
+                    else if (currentExists)
+                    {
+                        /* No conflict - just copy current data to new location */
+                        try
+                        {
+                            File.Copy(dbPath, newDbPath, false);
+                            ShowStatus("Database moved to new location!", System.Drawing.Color.Green);
+                        }
+                        catch (Exception ex)
+                        {
+                            ShowStatus($"Failed to copy: {ex.Message}", System.Drawing.Color.Red);
+                            return;
+                        }
+                    }
+
+                    /* Update the stored path and save it */
+                    dbPath = newDbPath;
+                    Properties.Settings.Default.DatabasePath = dbPath;
+                    Properties.Settings.Default.Save();
+
+                    /* Ensure the database exists at the new location */
+                    InitializeDatabase();
+
+                    ShowStatus($"Now using: {Path.GetFileName(dbPath)}", System.Drawing.Color.Green);
+                }
+            }
+        }
+
+        private string FindGoogleDriveFolder()
+        {
+            string userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+
+            /* Common Google Drive folder names */
+            string[] possibleNames = { "Google Drive", "GoogleDrive", "GDrive" };
+
+            foreach (string name in possibleNames)
+            {
+                string path = Path.Combine(userProfile, name);
+                if (Directory.Exists(path))
+                    return path;
+            }
+
+            return null;
+        }
         private void InitializeDatabase()
         {
             try
@@ -564,8 +911,49 @@ namespace Clockbuster
                 return;
             }
 
-            txtActivity.Text = activityText;
+            /* Check if this is first time use - database not set up yet */
+            if (string.IsNullOrEmpty(dbPath))
+            {
+                /* Prompt for device name */
+                string deviceName = GetSafeDeviceName();
 
+                /* Prompt for storage location */
+                using (SaveFileDialog sfd = new SaveFileDialog())
+                {
+                    sfd.Title = "Choose Where to Save Your Clockbuster Data";
+                    sfd.Filter = "Database files (*.db)|*.db";
+                    sfd.FileName = $"clockbuster_{deviceName}.db";
+                    sfd.CheckFileExists = false;
+
+                    /* Try to suggest Google Drive or Documents folder */
+                    string gDriveRoot = FindGoogleDriveFolder();
+                    if (gDriveRoot != null)
+                    {
+                        string gDriveDocs = Path.Combine(gDriveRoot, "Documents");
+                        if (Directory.Exists(gDriveDocs))
+                            sfd.InitialDirectory = gDriveDocs;
+                    }
+                    else
+                    {
+                        sfd.InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+                    }
+
+                    if (sfd.ShowDialog() != DialogResult.OK)
+                    {
+                        ShowStatus("Clock in cancelled - no storage location selected.", System.Drawing.Color.Orange);
+                        return;
+                    }
+
+                    dbPath = sfd.FileName;
+                    Properties.Settings.Default.DatabasePath = dbPath;
+                    Properties.Settings.Default.Save();
+                }
+
+                /* Now initialize the database */
+                InitializeDatabase();
+            }
+
+            txtActivity.Text = activityText;
             startTime = DateTime.Now;
             isTracking = true;
             displayTimer.Start();
@@ -578,7 +966,6 @@ namespace Clockbuster
 
             ShowStatus("Tracking started...", System.Drawing.Color.Green);
         }
-
         private void BtnClockOut_Click(object sender, EventArgs e)
         {
             DateTime endTime = DateTime.Now;
