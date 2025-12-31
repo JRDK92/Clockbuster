@@ -1,0 +1,127 @@
+﻿<Window x:Class="ClockbusterWPF.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Clockbuster - Time Tracker" 
+        Height="350" 
+        Width="500"
+        ResizeMode="CanMinimize"
+        WindowStartupLocation="CenterScreen">
+
+    <Window.Resources>
+        <!-- Modern button style -->
+        <Style x:Key="ModernButton" TargetType="Button">
+            <Setter Property="Background" Value="#0078D4"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Padding" Value="20,10"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" 
+                                CornerRadius="4"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" 
+                                            VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#005A9E"/>
+                </Trigger>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Background" Value="#CCCCCC"/>
+                    <Setter Property="Cursor" Value="Arrow"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+    </Window.Resources>
+
+    <DockPanel>
+        <!-- Menu Bar -->
+        <Menu DockPanel.Dock="Top">
+            <MenuItem Header="File">
+                <MenuItem Header="Data">
+                    <MenuItem x:Name="MenuBackup" Header="Backup Database" Click="MenuBackup_Click"/>
+                    <MenuItem x:Name="MenuLocate" Header="Locate in Explorer" Click="MenuLocate_Click"/>
+                    <Separator/>
+                    <MenuItem x:Name="MenuExportCsv" Header="Export to CSV" Click="MenuExportCsv_Click"/>
+                    <MenuItem x:Name="MenuMerge" Header="Merge Data" Click="MenuMerge_Click"/>
+                    <MenuItem x:Name="MenuChangeLocation" Header="Change Database Location" Click="MenuChangeLocation_Click"/>
+                    <MenuItem x:Name="MenuRenameDevice" Header="Rename This Device" Click="MenuRenameDevice_Click"/>
+                </MenuItem>
+            </MenuItem>
+            <MenuItem Header="View">
+                <MenuItem x:Name="MenuViewData" Header="Timeclock Data" Click="MenuViewData_Click"/>
+            </MenuItem>
+        </Menu>
+
+        <!-- Main Content -->
+        <Grid Margin="20">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <!-- Activity Input -->
+            <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,10,0,0">
+                <TextBlock Text="Activity:" 
+                           VerticalAlignment="Center" 
+                           FontSize="14" 
+                           Width="80"/>
+                <TextBox x:Name="TxtActivity" 
+                         Width="360" 
+                         FontSize="14" 
+                         Padding="8,6"
+                         VerticalContentAlignment="Center"/>
+            </StackPanel>
+
+            <!-- Clock Buttons -->
+            <StackPanel Grid.Row="1" 
+                       Orientation="Horizontal" 
+                       Margin="0,20,0,0" 
+                       HorizontalAlignment="Left">
+                <Button x:Name="BtnClockIn" 
+                        Content="Clock In" 
+                        Style="{StaticResource ModernButton}"
+                        Width="120"
+                        Click="BtnClockIn_Click"/>
+                <Button x:Name="BtnClockOut" 
+                        Content="Clock Out" 
+                        Style="{StaticResource ModernButton}"
+                        Width="120"
+                        Margin="15,0,0,0"
+                        IsEnabled="False"
+                        Click="BtnClockOut_Click"/>
+            </StackPanel>
+
+            <!-- Elapsed Time Display -->
+            <TextBlock x:Name="LblElapsed" 
+                      Grid.Row="2"
+                      Text="00:00" 
+                      FontSize="48" 
+                      FontWeight="Bold"
+                      HorizontalAlignment="Center"
+                      Margin="0,30,0,0"
+                      Foreground="#333333"/>
+
+            <!-- Status Message -->
+            <TextBlock x:Name="LblStatus" 
+                      Grid.Row="3"
+                      Text="" 
+                      FontSize="12"
+                      TextAlignment="Center"
+                      TextWrapping="Wrap"
+                      Margin="0,20,0,0"
+                      Foreground="Green"
+                      Height="50"/>
+        </Grid>
+    </DockPanel>
+</Window>
